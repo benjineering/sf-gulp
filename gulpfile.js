@@ -3,8 +3,10 @@ var gulp = require('gulp');
 var del = require('del');
 var exec = require('child_process').exec;
 var fs = require('fs');
+var map = require('map-stream');
 var mime = require('mime');
 var mkdirp = require('mkdirp');
+var path = require('path');
 var seq = require('run-sequence');
 var xml = require('xmlbuilder');
 var zip = require('gulp-zip');
@@ -24,40 +26,31 @@ gulp.task('clean:static', function() {
   return del(RELEASE_DIR + '/**/*');
 });
 
-gulp.task('build:static:xml', function() {
-  
-});
-
-gulp.task('build:static', function() {
+gulp.task('build:metafiles', function() {
   // TODO:
-  //   - create app.resource-meta.xml
-  //   - zip and rename to app.resource
+  //   - zip and rename to app.resource?
 
-  /*
-  <?xml version="1.0" encoding="UTF-8"?>
-  <StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">
-      <contentType>text/plain</contentType>
-      <description>Test Resource</description>
-  </StaticResource>
-  */
+  var writeXml = function(file, cb) {
+    if (file.isDirectory()) return;
 
-  mkdirp(RELEASE_DIR, function (err) {
-    var meta = xml.create('StaticResource', {'xmlns': 'http://soap.sforce.com/2006/04/metadata'});    
-    var files = fs.readdirSync('./' + STATIC_FILES);
-    
-    for (var i in files) {
-      var currentFile = './' + STATIC_FILES + '/' + files[i];
-      var stats = fs.statSync(currentFile);
+    var resourceName = path.basename(file.path);
+    resourceName = resourceName.substr(0, resourceName.lastIndexOf('.'));
+    var metaPath = path.dirname(file.path) + '/' + resourceName + '-meta.xml';
 
-      if (stats.isFile()) {
-        console.log(currentFile);
-      }
+    if (!fs.existsSync(metaPath)) {
+      var meta = xml.create('StaticResource',
+        {'xmlns': 'http://soap.sforce.com/2006/04/metadata'});
+      meta.ele('contentType', mime.getType(file.relative));
+      meta.ele('cacheControl', 'Private');
+
+      fs.writeFileSync(metaPath, meta.end({ pretty: true}));
+      console.log('Created ' + metaPath);
     }
-    
-    var xmlStr = meta.end({pretty: true, indent: '  '});
 
-    fs.writeFile(META_XML_PATH, xmlStr); 
-  });
+    cb(null, file);
+  };
+
+  return gulp.src(['./' + STATIC_FILES]).pipe(map(writeXml));
 });
 
 gulp.task('sfdx:push', function() {
